@@ -1,5 +1,5 @@
 const Request = require("../models/request");
-const Car = require("../models/car");
+const Car = require("../models/Cars");
 const User = require("../models/User");
 const fs = require("fs");
 const path = require("path");

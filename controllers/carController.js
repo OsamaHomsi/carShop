@@ -1,4 +1,4 @@
-const Car = require("../models/car");
+const Car = require("../models/Cars");
 const User = require("../models/User");
 const Request = require("../models/request");
 const mongoose = require("mongoose");

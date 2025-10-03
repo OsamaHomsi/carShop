@@ -1,7 +1,7 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const User = require("../models/Users");
 
-// ✅ حماية المسارات: التحقق من التوكن وجلب المستخدم
+//  حماية المسارات: التحقق من التوكن وجلب المستخدم
 const protect = async (req, res, next) => {
   let token;
 
@@ -24,7 +24,7 @@ const protect = async (req, res, next) => {
   }
 };
 
-// ✅ صلاحية المدير فقط
+//  صلاحية المدير فقط
 const adminOnly = (req, res, next) => {
   if (req.user && req.user.role === "admin") {
     next();

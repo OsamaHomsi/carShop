@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const User = require("../models/Users");
 const Car = require("../models/Cars");
 // تسجيل مستخدم جديد مع رفع صورة
 const registerUser = async (req, res) => {

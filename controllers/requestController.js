@@ -1,6 +1,6 @@
-const Request = require("../models/request");
+const Request = require("../models/Requests");
 const Car = require("../models/Cars");
-const User = require("../models/User");
+const User = require("../models/Users");
 const fs = require("fs");
 const path = require("path");
 // عرض كل الطلبات (للمدراء فقط)

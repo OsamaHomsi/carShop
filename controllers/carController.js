@@ -1,6 +1,6 @@
 const Car = require("../models/Cars");
-const User = require("../models/User");
-const Request = require("../models/request");
+const User = require("../models/Users");
+const Request = require("../models/Requests");
 const mongoose = require("mongoose");
 
 // إنشاء سيارة جديدة وربطها بالمستخدم وإنشاء طلب موافقة

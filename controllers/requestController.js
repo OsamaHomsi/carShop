@@ -3,17 +3,24 @@ const Car = require("../models/Cars");
 const User = require("../models/Users");
 const fs = require("fs");
 const path = require("path");
+const cache = require("../utils/caches"); // ✅ إضافة الكاش
+
 // عرض كل الطلبات (للمدراء فقط)
 const getAllRequests = async (req, res) => {
   try {
     const { status } = req.query;
     const filter = status ? { status } : {};
 
+    const cacheKey = `requests_${status || "all"}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.status(200).json({ requests: cached });
+
     const requests = await Request.find(filter)
       .populate("submitted_by", "name email")
       .populate("reviewed_by", "name email")
       .populate("car_ref", "title price isApproved");
 
+    cache.set(cacheKey, requests);
     res.status(200).json({ requests });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch requests", error: error.message });
@@ -32,7 +39,6 @@ const approveRequest = async (req, res) => {
     if (!car) return res.status(404).json({ message: "Original car not found" });
 
     car.isApproved = "approved";
-
     await car.save();
 
     request.status = "approved";
@@ -46,6 +52,7 @@ const approveRequest = async (req, res) => {
       await user.save();
     }
 
+    cache.flushAll(); // ✅ مسح الكاش بعد التعديل
     res.status(200).json({ message: "Request approved and car published", request });
   } catch (error) {
     res.status(500).json({ message: "Approval failed", error: error.message });
@@ -63,7 +70,7 @@ const rejectRequest = async (req, res) => {
     if (request.car_ref) {
       const car = await Car.findById(request.car_ref);
       if (car) {
-        car.isApproved = "rejected"; // أو false أو حسب نوع الحقل
+        car.isApproved = "rejected";
         await car.save();
       }
     }
@@ -74,6 +81,7 @@ const rejectRequest = async (req, res) => {
     request.rejection_message = req.body.message || "";
     await request.save();
 
+    cache.flushAll(); // ✅ مسح الكاش بعد التعديل
     res.status(200).json({ message: "Request rejected", request });
   } catch (error) {
     res.status(500).json({ message: "Rejection failed", error: error.message });
@@ -83,6 +91,10 @@ const rejectRequest = async (req, res) => {
 // عرض طلب واحد بالتفصيل (للمدراء فقط)
 const getRequestById = async (req, res) => {
   try {
+    const cacheKey = `request_${req.params.id}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.status(200).json({ request: cached });
+
     const request = await Request.findById(req.params.id)
       .populate("submitted_by", "name email")
       .populate("reviewed_by", "name email")
@@ -90,6 +102,7 @@ const getRequestById = async (req, res) => {
 
     if (!request) return res.status(404).json({ message: "Request not found" });
 
+    cache.set(cacheKey, request);
     res.status(200).json({ request });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch request", error: error.message });
@@ -101,20 +114,23 @@ const getMyRequests = async (req, res) => {
   try {
     const { status } = req.query;
     const filter = { submitted_by: req.user.id };
+    if (status) filter.status = status;
 
-    if (status) {
-      filter.status = status;
-    }
+    const cacheKey = `myRequests_${req.user.id}_${status || "all"}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.status(200).json({ requests: cached });
 
     const requests = await Request.find(filter)
       .populate("car_ref", "title price isApproved images")
       .sort({ createdAt: -1 });
 
+    cache.set(cacheKey, requests);
     res.status(200).json({ requests });
   } catch (error) {
     res.status(500).json({ message: "Failed to fetch your requests", error: error.message });
   }
 };
+
 const updateRequest = async (req, res) => {
   try {
     const request = await Request.findById(req.params.id).populate("car_ref");
@@ -140,7 +156,6 @@ const updateRequest = async (req, res) => {
 
     const images = req.files ? req.files.map((file) => `/uploads/${file.filename}`) : [];
 
-    //  تعديل بيانات الطلب
     if (title) request.car_data.title = title;
     if (description) request.car_data.description = description;
     if (price) request.car_data.price = price;
@@ -155,7 +170,6 @@ const updateRequest = async (req, res) => {
       color: color || request.car_data.specs.color,
     };
 
-    //  تعديل بيانات السيارة المرتبطة
     const car = request.car_ref;
     if (car) {
       if (title) car.title = title;
@@ -169,6 +183,7 @@ const updateRequest = async (req, res) => {
 
     await request.save();
 
+    cache.flushAll(); // ✅ مسح الكاش بعد التعديل
     res.status(200).json({ message: "Request and car updated successfully", request });
   } catch (error) {
     res.status(500).json({ message: "Update failed", error: error.message });
@@ -179,34 +194,21 @@ const deleteApprovedRequest = async (req, res) => {
   try {
     const request = await Request.findById(req.params.id).populate("car_ref");
 
-    if (!request) {
-      return res.status(404).json({ message: "Request not found" });
-    }
-
-    //  تحقق من ملكية الطلب
-    if (request.submitted_by.toString() !== req.user.id) {
+    if (!request) return res.status(404).json({ message: "Request not found" });
+    if (request.submitted_by.toString() !== req.user.id)
       return res.status(403).json({ message: "You are not allowed to delete this request" });
-    }
-
-    //  تحقق من حالة الطلب
-    if (request.status !== "approved") {
+    if (request.status !== "approved")
       return res.status(400).json({ message: "Only approved requests can be deleted after sale" });
-    }
 
-    //  حذف الصور من السيرفر
     request.car_data.images.forEach((imgPath) => {
       const fullPath = path.join(__dirname, "..", imgPath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
-      }
+      if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
     });
 
-    //  حذف السيارة
     await Car.findByIdAndDelete(request.car_ref._id);
-
-    //  حذف الطلب
     await Request.findByIdAndDelete(req.params.id);
 
+    cache.flushAll(); // ✅ مسح الكاش بعد الحذف
     res.status(200).json({ message: "Request and car deleted successfully" });
   } catch (error) {
     res.status(500).json({ message: "Failed to delete request", error: error.message });
